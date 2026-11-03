@@ -1,0 +1,14 @@
+{
+  "name": "섯다",
+  "short_name": "섯다",
+  "description": "친구끼리 하는 두장섯다 (게임머니 전용).",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14382b",
+  "theme_color": "#14382b",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

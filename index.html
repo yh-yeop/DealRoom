@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>섯다</title>
+<meta name="description" content="친구끼리 하는 두장섯다. 방장 브라우저가 판을 돌리고, 게임머니로만 겨룬다.">
+<meta name="theme-color" content="#14382b">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="start" id="start">
+  <div class="logo" aria-hidden="true">
+    <div class="card face k-광 big"><b>3</b><i>벚꽃</i><em>光</em></div>
+    <div class="card face k-광 big"><b>8</b><i>공산</i><em>光</em></div>
+  </div>
+  <h1>섯다</h1>
+  <p class="sub">친구끼리 두장섯다 · <strong>게임머니 전용</strong></p>
+
+  <label class="field">이름
+    <input id="name" maxlength="10" autocomplete="nickname" placeholder="표시할 이름">
+  </label>
+  <button type="button" class="btn primary wide" id="btnHost">방 만들기</button>
+  <div class="join">
+    <input id="code" maxlength="4" placeholder="방 코드" autocapitalize="characters" autocomplete="off" spellcheck="false">
+    <button type="button" class="btn wide" id="btnJoin">참가</button>
+  </div>
+  <p class="msg" id="msg" role="status"></p>
+  <button type="button" class="link" id="btnRules1">족보 보기</button>
+  <p class="fine">현금 · 상품 · 환전이 없는 게임머니입니다. 돈이 떨어지면 다음 판에 자동으로 다시 채워지고, 충전 횟수는 점수에서 빠집니다.</p>
+</main>
+
+<div class="game" id="game" hidden>
+  <header class="bar">
+    <button type="button" class="chip" id="btnCopy" title="초대 링크 복사">방 <b id="roomCode"></b></button>
+    <span class="net" id="net"></span>
+    <span class="grow"></span>
+    <button type="button" class="chip" id="btnRules2">족보</button>
+    <button type="button" class="chip" id="btnLog">기록</button>
+    <button type="button" class="chip" id="btnLeave">나가기</button>
+  </header>
+
+  <section class="felt">
+    <div class="others" id="others"></div>
+
+    <div class="center">
+      <div class="pot"><span>판돈</span><b id="pot">0</b></div>
+      <div class="status" id="status"></div>
+      <div class="hostbox" id="hostbox" hidden>
+        <div class="cfg" id="cfg">
+          <label>시작 머니 <input type="number" id="cfgStart" min="1000" step="1000" inputmode="numeric"></label>
+          <label>기본금 <input type="number" id="cfgAnte" min="10" step="100" inputmode="numeric"></label>
+          <label>차례 시간(초) <input type="number" id="cfgTurn" min="5" max="120" inputmode="numeric"></label>
+        </div>
+        <div class="row">
+          <button type="button" class="btn primary" id="btnStart">시작</button>
+          <button type="button" class="btn" id="btnNext" hidden>다음 판</button>
+          <label class="toggle"><input type="checkbox" id="auto" checked> 자동 진행</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="me" id="me"></div>
+  </section>
+
+  <nav class="actions" id="actions" aria-label="베팅"></nav>
+
+  <aside class="side" id="side" hidden>
+    <div class="tabs">
+      <button type="button" class="tab on" data-tab="log">진행</button>
+      <button type="button" class="tab" data-tab="chat">채팅</button>
+      <button type="button" class="tab" data-tab="score">점수</button>
+      <button type="button" class="x" id="btnSideClose" aria-label="닫기">✕</button>
+    </div>
+    <ol class="log" id="log"></ol>
+    <table class="score" id="score" hidden></table>
+    <form class="chat" id="chatForm">
+      <input id="chatIn" maxlength="80" placeholder="한마디" autocomplete="off">
+      <button type="submit" class="btn">보내기</button>
+    </form>
+  </aside>
+  <div class="toast" id="toast" role="status"></div>
+</div>
+
+<dialog id="rules">
+  <h2>족보 (센 순서)</h2>
+  <ol class="rank">
+    <li><b>38광땡</b> 3광 + 8광</li>
+    <li><b>18광땡 · 13광땡</b> 1광 + 8광 / 1광 + 3광</li>
+    <li><b>장땡 ~ 1땡</b> 같은 월 두 장 (10 &gt; 9 &gt; … &gt; 1)</li>
+    <li><b>알리</b> 1 + 2 · <b>독사</b> 1 + 4 · <b>구삥</b> 1 + 9 · <b>장삥</b> 1 + 10 · <b>장사</b> 10 + 4 · <b>세륙</b> 4 + 6</li>
+    <li><b>갑오 ~ 1끗</b> 두 월을 더한 끝자리 (9 &gt; … &gt; 1)</li>
+    <li><b>망통</b> 끝자리 0</li>
+  </ol>
+  <h3>특수패</h3>
+  <ul class="rank">
+    <li><b>땡잡이</b> 3광 + 7열끗 — 1~9땡을 잡는다 (장땡 · 광땡은 못 잡음). 평소엔 망통</li>
+    <li><b>암행어사</b> 4열끗 + 7열끗 — 13 · 18광땡을 잡는다. 평소엔 1끗</li>
+    <li><b>구사</b> 4 + 9 — 남은 사람 중 가장 센 패가 알리 이하면 재경기. 평소엔 3끗</li>
+    <li><b>멍텅구리구사</b> 4열끗 + 9열끗 — 9땡 이하면 재경기. 평소엔 3끗</li>
+  </ul>
+  <p class="fine">재경기는 승부까지 살아 있던 사람끼리 판돈 그대로 다시 받는다. 구사로 그냥 이길 수 있으면 재경기하지 않는다. 같은 족보는 나눠 먹는다.</p>
+  <h3>베팅</h3>
+  <ul class="rank">
+    <li><b>체크</b> 안 걸고 넘김 · <b>삥</b> 기본금만큼 처음 걸기 · <b>콜</b> 앞사람만큼 맞추기</li>
+    <li><b>따당</b> 맞출 돈의 두 배를 낸다 · <b>쿼터</b> 맞추고 판돈의 ¼ 더 · <b>하프</b> 맞추고 판돈의 ½ 더</li>
+    <li>한 사람이 한 판에 두 번까지 올릴 수 있다. 가진 돈보다 많으면 올인 — 자기가 건 만큼씩만 가져간다.</li>
+    <li>차례 시간이 지나면 체크할 수 있을 땐 체크, 아니면 다이. 지난 판 이긴 사람이 먼저 한다.</li>
+  </ul>
+  <form method="dialog"><button class="btn wide">닫기</button></form>
+</dialog>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
