@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>딜룸</title>
-<meta name="description" content="친구끼리 하는 카드게임 방. 방장 브라우저가 판을 돌리고, 게임머니로만 겨룬다. 지금은 섯다.">
+<meta name="description" content="친구끼리 하는 카드게임 방. 방장 브라우저가 판을 돌리고, 게임머니로만 겨룬다. 지금은 섯다 · 세장섯다.">
 <meta name="theme-color" content="#14382b">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
@@ -17,10 +17,7 @@
 <body>
 
 <main class="start" id="start">
-  <div class="logo" aria-hidden="true">
-    <div class="card face k-광 big"><b>3</b><i>벚꽃</i><em>光</em></div>
-    <div class="card face k-광 big"><b>8</b><i>공산</i><em>光</em></div>
-  </div>
+  <img class="logo" src="icon.svg" alt="" width="96" height="96">
   <h1>딜룸</h1>
   <p class="sub">친구끼리 카드 한 판 · <strong>게임머니 전용</strong></p>
 
@@ -49,22 +46,25 @@
   </header>
 
   <section class="felt">
-    <div class="others" id="others"></div>
+    <div class="table">
+      <div class="others" id="others"></div>
+      <div class="center">
+        <div class="pot"><span>판돈</span><b id="pot">0</b></div>
+        <div class="chips" id="chips"></div>
+        <div class="status" id="status"></div>
+      </div>
+    </div>
 
-    <div class="center">
-      <div class="pot"><span>판돈</span><b id="pot">0</b></div>
-      <div class="status" id="status"></div>
-      <div class="hostbox" id="hostbox" hidden>
-        <div class="cfg" id="cfg">
-          <label>시작 머니 <input type="number" id="cfgStart" min="1000" step="1000" inputmode="numeric"></label>
-          <label>기본금 <input type="number" id="cfgAnte" min="10" step="100" inputmode="numeric"></label>
-          <label>차례 시간(초) <input type="number" id="cfgTurn" min="5" max="120" inputmode="numeric"></label>
-        </div>
-        <div class="row">
-          <button type="button" class="btn primary" id="btnStart">시작</button>
-          <button type="button" class="btn" id="btnNext" hidden>다음 판</button>
-          <label class="toggle"><input type="checkbox" id="auto" checked> 자동 진행</label>
-        </div>
+    <div class="hostbox" id="hostbox" hidden>
+      <div class="cfg" id="cfg">
+        <label>시작 머니 <input type="number" id="cfgStart" min="1000" step="1000" inputmode="numeric"></label>
+        <label>기본금 <input type="number" id="cfgAnte" min="10" step="100" inputmode="numeric"></label>
+        <label>차례 시간(초) <input type="number" id="cfgTurn" min="5" max="120" inputmode="numeric"></label>
+      </div>
+      <div class="row">
+        <button type="button" class="btn primary" id="btnStart">시작</button>
+        <button type="button" class="btn" id="btnNext" hidden>다음 판</button>
+        <label class="toggle"><input type="checkbox" id="auto" checked> 자동 진행</label>
       </div>
     </div>
 
@@ -91,7 +91,13 @@
 </div>
 
 <dialog id="rules">
-  <h2>섯다 족보 (센 순서)</h2>
+  <h2>섯다</h2>
+  <ul class="rank">
+    <li><b>두장섯다</b> 1장 → 베팅 → 2장째 → 베팅 → 공개</li>
+    <li><b>세장섯다</b> 2장 → 베팅 → 3장째 받고 두 장 고르기 → 베팅 → 공개 (고른 두 장으로 승부)</li>
+    <li>공개는 선(첫 차례)부터 한 사람씩</li>
+  </ul>
+  <h3>족보 (센 순서)</h3>
   <ol class="rank">
     <li><b>38광땡</b> 3광 + 8광</li>
     <li><b>18광땡 · 13광땡</b> 1광 + 8광 / 1광 + 3광</li>
@@ -111,8 +117,8 @@
   <h3>베팅</h3>
   <ul class="rank">
     <li><b>체크</b> 안 걸고 넘김 · <b>삥</b> 기본금만큼 처음 걸기 · <b>콜</b> 앞사람만큼 맞추기</li>
-    <li><b>따당</b> 맞출 돈의 두 배를 낸다 · <b>쿼터</b> 맞추고 판돈의 ¼ 더 · <b>하프</b> 맞추고 판돈의 ½ 더</li>
-    <li>한 사람이 한 판에 두 번까지 올릴 수 있다. 가진 돈보다 많으면 올인 — 자기가 건 만큼씩만 가져간다.</li>
+    <li><b>따당</b> 맞출 돈의 두 배를 낸다 · <b>하프</b> 맞추고 판돈의 ½ 더 · <b>올인</b> 가진 돈 전부</li>
+    <li>한 사람이 한 베팅에 두 번까지 올릴 수 있다. 올인한 사람은 자기가 건 만큼씩만 각자에게서 가져간다.</li>
     <li>차례 시간이 지나면 체크할 수 있을 땐 체크, 아니면 다이. 지난 판 이긴 사람이 먼저 한다.</li>
   </ul>
   <form method="dialog"><button class="btn wide">닫기</button></form>

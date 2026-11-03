@@ -2,11 +2,13 @@
 // 방장 자신도 같은 페이지 안의 연결(localPair)로 붙는 손님 하나와 똑같이 취급한다 — 다른 점은 방장 명령만.
 //
 // 보내는 말:  { t: 'state', s }  { t: 'err', msg }  { t: 'bye', msg }
-// 받는 말:    { t: 'hello', name }  { t: 'act', k }
+// 받는 말:    { t: 'hello', name }  { t: 'act', k }  { t: 'pick', idx: [i, j] }
 //             방장만: { t: 'start' }  { t: 'next' }  { t: 'config', cfg }  { t: 'auto', on }  { t: 'chat', text }
 import { GAMES } from './games/index.js';
 
-export const SHOW_MS = 6000;    // 결과를 보여 주는 시간 (자동 진행)
+import { SHOW_MS, REVEAL_MS } from './timing.js';
+
+export { SHOW_MS, REVEAL_MS };
 let nextId = 1;
 
 export class Host {
@@ -52,6 +54,8 @@ export class Host {
       return;
     } else if (m.t === 'act') {
       res = tb.act(id, m.k);
+    } else if (m.t === 'pick') {
+      res = tb.pick(id, m.idx);
     } else if (m.t === 'chat') {
       const text = String(m.text ?? '').trim().slice(0, 80);
       if (!text) return;
@@ -77,11 +81,11 @@ export class Host {
   // 화면 보내기 + 시간 재기 (차례 시간 초과 · 결과 보여 준 뒤 다음 판)
   sync() {
     const tb = this.table;
-    if (tb.phase === 'bet' && tb.turnSeq !== this.turnSeq) {
+    if (tb.playing && tb.turnSeq !== this.turnSeq) {
       this.ct(this.turnTimer);
       const seq = this.turnSeq = tb.turnSeq;
       this.turnTimer = this.st(() => { tb.timeout(seq); this.sync(); }, Math.max(0, tb.turnDeadline - tb.now()));
-    } else if (tb.phase !== 'bet') {
+    } else if (!tb.playing) {
       this.ct(this.turnTimer);
       this.turnSeq = -1;
     }
@@ -89,11 +93,12 @@ export class Host {
     if (key !== this.showKey) {
       this.ct(this.showTimer);
       this.showKey = key;
-      if (key) this.showTimer = this.st(() => { this.showKey = null; tb.next(); this.sync(); }, SHOW_MS);
+      const wait = SHOW_MS + (tb.result?.order?.length ?? 0) * REVEAL_MS;
+      if (key) this.showTimer = this.st(() => { this.showKey = null; tb.next(); this.sync(); }, wait);
     }
     for (const [id, c] of this.conns) {
       if (!c.joined) continue;
-      c.conn.send({ t: 'state', s: { ...tb.view(id), game: this.game, host: id === this.hostId, auto: this.auto, chat: this.chat.slice(-12) } });
+      c.conn.send({ t: 'state', s: { ...tb.view(id), game: this.game, host: id === this.hostId, hostSeat: this.hostId, auto: this.auto, chat: this.chat.slice(-12) } });
     }
   }
 

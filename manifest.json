@@ -1,7 +1,7 @@
 {
   "name": "딜룸",
   "short_name": "딜룸",
-  "description": "친구끼리 하는 카드게임 방 (게임머니 전용). 지금은 섯다.",
+  "description": "친구끼리 하는 카드게임 방 (게임머니 전용). 지금은 섯다 · 세장섯다.",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

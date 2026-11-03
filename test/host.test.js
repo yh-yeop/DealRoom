@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Host, SHOW_MS } from '../src/host.js';
+import { Host, SHOW_MS, REVEAL_MS } from '../src/host.js';
 import { localPair } from '../src/net/local.js';
 
 // 가짜 시계: setTimeout 을 흉내 내고 advance 로 시간을 민다
@@ -61,8 +61,8 @@ test('들어와서 방장이 시작하면 각자 자기 패만 받는다', async
   assert.equal(g.state.phase, 'bet');
   const mine = g.state.seats.find((s) => s.id === g.state.me);
   const other = g.state.seats.find((s) => s.id !== g.state.me);
-  assert.equal(mine.cards.filter((x) => x !== null).length, 2);
-  assert.deepEqual(other.cards, [null, null]);
+  assert.equal(mine.cards.filter((x) => x !== null).length, 1);   // 두장섯다는 한 장부터
+  assert.deepEqual(other.cards, [null]);
   assert.equal(host.table.players.size, 2);
 });
 
@@ -72,12 +72,12 @@ test('시간이 지나면 자동으로 넘어가고, 결과 뒤 다음 판', asy
   g.conn.send({ t: 'hello', name: '손님' });
   h.conn.send({ t: 'start' });
   await flush();
-  clock.advance(10000);   // 첫 사람 체크
-  await flush();
-  clock.advance(10000);   // 둘째 체크 → 승부
-  await flush();
+  for (let i = 0; i < 4; i++) {   // 두 사람 × 두 베팅 판, 시간 초과마다 체크
+    clock.advance(10000);
+    await flush();
+  }
   assert.equal(h.state.phase, 'show');
-  clock.advance(SHOW_MS);
+  clock.advance(SHOW_MS + h.state.result.order.length * REVEAL_MS);
   await flush();
   assert.equal(h.state.phase, 'bet');
   assert.equal(h.state.roundNo, 2);
@@ -96,4 +96,30 @@ test('같은 이름은 거절, 손님이 나가면 판에서 빠진다', async (
   await flush();
   assert.equal(h.state.phase, 'show');
   assert.equal(host.table.seats.length, 1);
+});
+
+test('세장섯다: 고르기를 안 하면 시간이 지나 대신 고른다', async () => {
+  const clock = fakeClock();
+  const host = new Host({ turnSec: 10 }, { ...clock, game: 'seotda3' });
+  const [a, b] = localPair();
+  const [c, d] = localPair();
+  host.connect(a); host.connect(c);
+  let st = null;
+  b.onMessage((m) => { if (m.t === 'state') st = m.s; });
+  b.send({ t: 'hello', name: '방장' });
+  d.send({ t: 'hello', name: '손님' });
+  await flush();
+  b.send({ t: 'start' });
+  await flush();
+  assert.equal(st.mode, 3);
+  assert.equal(st.seats[0].cards.length, 2);
+  clock.advance(10000); await flush();
+  clock.advance(10000); await flush();
+  assert.equal(st.phase, 'pick');
+  b.send({ t: 'pick', idx: [0, 2] });
+  await flush();
+  assert.deepEqual(st.myPick, [0, 2]);
+  clock.advance(10000); await flush();
+  assert.equal(st.phase, 'bet');
+  assert.equal(st.street, 2);
 });

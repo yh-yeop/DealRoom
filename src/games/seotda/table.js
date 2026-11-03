@@ -1,30 +1,38 @@
 // 판 진행 (방장 브라우저에서만 돈다). 자리 · 게임머니 · 베팅 · 판돈 나누기.
 // 화면 · 네트워크와 무관하다 — 시간과 난수는 밖에서 넣는다 (테스트에서 고정).
+//
+// 한 판의 흐름 (mode = 두장 2 · 세장 3)
+//   두장: 1장 → 베팅 → 2장째 → 베팅 → 공개
+//   세장: 2장 → 베팅 → 3장째 → 모두 2장 고르기 → 베팅 → 공개
+// 패는 판 시작 때 사람마다 다 뽑아 두고, 보여 주는 장수(dealt)만 늘린다.
 import { newDeck, evaluate, showdown, rank } from './rules.js';
 
-export const DEFAULTS = { startMoney: 100000, ante: 1000, turnSec: 30, maxPlayers: 6 };
+export const DEFAULTS = { startMoney: 100000, ante: 1000, turnSec: 30, maxPlayers: 6, mode: 2 };
 export const MAX_RAISES = 2;      // 한 사람이 한 베팅 판에 올릴 수 있는 횟수
-export const ACTION_LABEL = { die: '다이', check: '체크', call: '콜', bbing: '삥', ddadang: '따당', quarter: '쿼터', half: '하프' };
-const RAISES = ['bbing', 'ddadang', 'quarter', 'half'];
+export const ACTION_LABEL = { die: '다이', check: '체크', call: '콜', bbing: '삥', ddadang: '따당', half: '하프', allin: '올인' };
+const RAISES = ['bbing', 'ddadang', 'half', 'allin'];
 const LOG_MAX = 60;
 
 export class Table {
   constructor(cfg = {}, { rand = Math.random, now = () => Date.now(), deck = () => newDeck(rand) } = {}) {
     this.cfg = { ...DEFAULTS, ...cfg };
+    this.cfg.mode = this.cfg.mode === 3 ? 3 : 2;
     this.makeDeck = deck;   // 테스트에서 패를 정해 둘 때
     this.now = now;
     this.players = new Map();   // id → { id, name, acct, connected }
     this.seats = [];            // 자리 순서 (id)
     this.ledger = new Map();    // 이름 → { money, refills } — 나갔다 다시 들어와도 그대로
-    this.phase = 'lobby';       // lobby | bet | show
+    this.phase = 'lobby';       // lobby | bet | pick | show
     this.round = null;
     this.result = null;
     this.lastWinner = null;
     this.roundNo = 0;
-    this.turnSeq = 0;           // 차례가 바뀔 때마다 +1 (시간 초과 판정용)
+    this.turnSeq = 0;           // 차례(고르기 시간 포함)가 바뀔 때마다 +1 (시간 초과 판정용)
     this.turnDeadline = 0;
     this.log = [];
   }
+
+  get playing() { return this.phase === 'bet' || this.phase === 'pick'; }
 
   // ── 자리 ─────────────────────────────────────────────
 
@@ -50,15 +58,16 @@ export class Table {
     p.connected = false;
     this.say(`${p.name} 님이 나갔어요`);
     const r = this.round;
-    // 판이 아직 안 끝났으면 (베팅 중 · 재경기 대기) 다이 처리하고 자리는 판이 끝날 때 뺀다
-    const pending = this.phase !== 'lobby' && !!r && r.ids.includes(id) && (this.phase === 'bet' || !!this.result?.redeal);
+    // 판이 아직 안 끝났으면 (베팅 · 고르기 · 재경기 대기) 다이 처리하고 자리는 판이 끝날 때 뺀다
+    const pending = !!r && r.ids.includes(id) && (this.playing || (this.phase === 'show' && !!this.result?.redeal));
     if (!pending) return this.drop(id);
     if (r.folded.has(id)) return;
     r.folded.add(id);
     r.last.set(id, '다이');
-    if (this.phase !== 'bet') return;
-    if (r.turn === id) this.advance();
-    else if (this.alive().length === 1) this.finish(this.alive());
+    if (!this.playing) return;
+    if (this.alive().length === 1) return this.finish(this.alive());
+    if (this.phase === 'bet' && r.turn === id) this.advance();
+    else if (this.phase === 'pick' && this.allPicked()) this.beginBetting(2);
   }
 
   drop(id) {
@@ -67,7 +76,7 @@ export class Table {
   }
 
   setConfig(cfg) {
-    if (this.phase === 'bet') return { err: '판이 끝난 뒤에 바꿀 수 있어요' };
+    if (this.playing) return { err: '판이 끝난 뒤에 바꿀 수 있어요' };
     const n = (v, lo, hi, d) => (Number.isFinite(+v) ? Math.min(hi, Math.max(lo, Math.round(+v))) : d);
     const c = this.cfg;
     this.cfg = {
@@ -85,7 +94,7 @@ export class Table {
   }
 
   canStart() {
-    return this.phase !== 'bet' && this.seats.filter((id) => this.players.get(id).connected).length >= 2;
+    return !this.playing && this.seats.filter((id) => this.players.get(id).connected).length >= 2;
   }
 
   // ── 한 판 ────────────────────────────────────────────
@@ -104,7 +113,8 @@ export class Table {
     }
     this.roundNo++;
     this.round = {
-      ids, cards: new Map(), folded: new Set(), contrib: new Map(), last: new Map(),
+      ids, cards: new Map(), dealt: 0, street: 1, picks: new Map(),
+      folded: new Set(), contrib: new Map(), last: new Map(),
       acted: new Set(), raises: new Map(), betMade: false, turn: null, first: null, redeals: 0,
     };
     for (const id of ids) this.pay(id, ante);
@@ -113,27 +123,81 @@ export class Table {
     this.deal();
     const r = this.round;
     r.first = ids.includes(this.lastWinner) ? this.lastWinner : ids[(this.roundNo - 1) % ids.length];
-    this.beginBetting();
+    this.beginBetting(1);
     return { ok: true };
   }
 
+  // 살아 있는 사람마다 mode 장씩 뽑아 두고, 처음엔 한 장 덜 보여 준다
   deal() {
     const deck = this.makeDeck();
     const r = this.round;
+    const n = this.cfg.mode;
     r.cards.clear();
-    for (const id of r.ids) if (!r.folded.has(id)) r.cards.set(id, [deck.pop(), deck.pop()]);
+    r.picks.clear();
+    r.dealt = n - 1;
+    for (const id of r.ids) if (!r.folded.has(id)) r.cards.set(id, Array.from({ length: n }, () => deck.pop()));
   }
 
-  beginBetting() {
+  beginBetting(street) {
     const r = this.round;
     this.phase = 'bet';
+    r.street = street;
     r.acted = new Set();
     r.raises = new Map();
     r.betMade = false;
     r.turn = null;
     const first = this.needsAction(r.first) ? r.first : this.nextActor(r.first);
-    if (first == null) return this.showdown();
+    if (first == null) return this.endStreet();
     this.setTurn(first);
+  }
+
+  // 한 베팅 판이 끝남: 첫 판이면 한 장 더 (세장은 고르기), 둘째 판이면 공개
+  endStreet() {
+    const r = this.round;
+    r.turn = null;
+    if (r.street === 2) return this.showdown();
+    r.dealt = this.cfg.mode;
+    if (this.cfg.mode === 3) return this.beginPick();
+    this.beginBetting(2);
+  }
+
+  beginPick() {
+    this.phase = 'pick';
+    this.turnSeq++;
+    this.turnDeadline = this.now() + this.cfg.turnSec * 1000;
+    this.say('세 번째 카드 — 두 장을 고르세요');
+  }
+
+  allPicked() { return this.alive().every((id) => this.round.picks.has(id)); }
+
+  pick(id, idx) {
+    const r = this.round;
+    if (this.phase !== 'pick' || !r.cards.has(id) || r.folded.has(id)) return { err: '지금은 고를 수 없어요' };
+    if (r.picks.has(id)) return { err: '이미 골랐어요' };
+    if (!Array.isArray(idx) || idx.length !== 2 || idx[0] === idx[1] || !idx.every((i) => i === 0 || i === 1 || i === 2)) return { err: '두 장을 골라 주세요' };
+    r.picks.set(id, [...idx].sort());
+    if (this.allPicked()) this.beginBetting(2);
+    return { ok: true };
+  }
+
+  // 세 장 중 가장 센 두 장 (시간 초과 때 대신 골라 준다)
+  bestPick(id) {
+    const c = this.round.cards.get(id);
+    let best = null;
+    for (const p of [[0, 1], [0, 2], [1, 2]]) {
+      const s = evaluate([c[p[0]], c[p[1]]]).score;
+      if (!best || s > best.s) best = { p, s };
+    }
+    return best.p;
+  }
+
+  // 그 사람이 승부에 내는 두 장
+  handOf(id) {
+    const r = this.round;
+    const c = r.cards.get(id);
+    if (this.cfg.mode === 2) return c;
+    const p = r.picks.get(id) ?? this.bestPick(id);
+    return [c[p[0]], c[p[1]]];
   }
 
   options(id) {
@@ -144,7 +208,7 @@ export class Table {
     const pot = this.pot();
     const out = [{ k: 'die', pay: 0 }];
     if (toCall === 0) out.push({ k: 'check', pay: 0 });
-    else out.push({ k: 'call', pay: Math.min(toCall, money) });
+    else out.push({ k: 'call', pay: Math.min(toCall, money), allin: toCall >= money });
     const othersCanAct = this.alive().some((o) => o !== id && this.players.get(o).acct.money > 0);
     if (money > toCall && othersCanAct && (r.raises.get(id) ?? 0) < MAX_RAISES) {
       const u = unit(this.cfg.ante);
@@ -152,17 +216,15 @@ export class Table {
       const raw = [];
       if (!r.betMade && toCall === 0) raw.push(['bbing', this.cfg.ante]);
       if (toCall > 0) raw.push(['ddadang', toCall * 2]);
-      raw.push(['quarter', toCall + up((pot + toCall) / 4)]);
       raw.push(['half', toCall + up((pot + toCall) / 2)]);
       const seen = new Set();
-      for (const [k, want] of raw) {
-        const pay = Math.min(want, money);
-        if (pay <= toCall || seen.has(pay)) continue;
+      for (const [k, pay] of raw) {
+        if (pay <= toCall || pay >= money || seen.has(pay)) continue;   // 가진 돈을 넘으면 올인 버튼으로
         seen.add(pay);
-        out.push({ k, pay, allin: pay === money });
+        out.push({ k, pay });
       }
+      out.push({ k: 'allin', pay: money, allin: true });
     }
-    for (const o of out) if (o.pay > 0 && o.pay === money) o.allin = true;
     return out;
   }
 
@@ -172,12 +234,9 @@ export class Table {
     if (!opt) return { err: '지금은 할 수 없는 베팅이에요' };
     const r = this.round;
     const p = this.players.get(id);
-    const label = ACTION_LABEL[k] + (opt.allin ? ' (올인)' : '');
-    if (k === 'die') {
-      r.folded.add(id);
-    } else {
-      this.pay(id, opt.pay);
-    }
+    const label = ACTION_LABEL[k] + (opt.allin && k !== 'allin' ? ' (올인)' : '');
+    if (k === 'die') r.folded.add(id);
+    else this.pay(id, opt.pay);
     if (RAISES.includes(k)) {
       r.betMade = true;
       r.raises.set(id, (r.raises.get(id) ?? 0) + 1);
@@ -191,10 +250,15 @@ export class Table {
     return { ok: true };
   }
 
-  // 시간 초과: 공짜로 넘길 수 있으면 체크, 아니면 다이
+  // 시간 초과: 베팅은 공짜로 넘길 수 있으면 체크 · 아니면 다이, 고르기는 가장 센 두 장
   timeout(seq) {
-    if (this.phase !== 'bet' || seq !== this.turnSeq) return;
-    const id = this.round.turn;
+    if (!this.playing || seq !== this.turnSeq) return;
+    const r = this.round;
+    if (this.phase === 'pick') {
+      for (const id of this.alive()) if (!r.picks.has(id)) r.picks.set(id, this.bestPick(id));
+      return this.beginBetting(2);
+    }
+    const id = r.turn;
     const k = this.options(id).some((o) => o.k === 'check') ? 'check' : 'die';
     this.say(`${this.players.get(id).name} 님 시간 초과`);
     this.act(id, k);
@@ -204,7 +268,7 @@ export class Table {
     const alive = this.alive();
     if (alive.length === 1) return this.finish(alive);
     const next = this.nextActor(this.round.turn);
-    if (next == null) return this.showdown();
+    if (next == null) return this.endStreet();
     this.setTurn(next);
   }
 
@@ -238,17 +302,25 @@ export class Table {
     return null;
   }
 
+  // 선부터 자리 순서대로 패를 깐다
+  revealOrder() {
+    const r = this.round;
+    const alive = this.alive();
+    const s = Math.max(0, r.ids.indexOf(r.first));
+    return [...r.ids.slice(s), ...r.ids.slice(0, s)].filter((id) => alive.includes(id));
+  }
+
   showdown() {
     const r = this.round;
     r.turn = null;
     const alive = this.alive();
-    const res = showdown(alive.map((id) => ({ id, cards: r.cards.get(id) })));
+    const res = showdown(alive.map((id) => ({ id, cards: this.handOf(id) })));
     if (res.redeal) {
       const who = this.players.get(res.by);
       const e = res.hands.get(res.by);
       this.say(`${who.name}: ${e.name}! 살아 있는 사람끼리 다시 (판돈은 그대로)`);
       this.phase = 'show';
-      this.result = { redeal: true, by: res.by, shown: reveal(res.hands), pots: [] };
+      this.result = { redeal: true, by: res.by, order: this.revealOrder(), shown: this.reveal(res.hands), pots: [] };
       return;
     }
     this.finish(alive, res.hands);
@@ -302,10 +374,18 @@ export class Table {
       redeal: false,
       winners: main,
       won: Object.fromEntries(won),
-      shown: hands ? reveal(hands) : {},
+      order: hands ? this.revealOrder() : [],
+      shown: hands ? this.reveal(hands) : {},
       pots: pots.map((p) => ({ amount: p.amount, winners: p.winners })),
     };
     for (const id of [...this.seats]) if (!this.players.get(id).connected) this.drop(id);
+  }
+
+  // 공개하는 패: id → { cards: 낸 두 장, name: 족보 }
+  reveal(hands) {
+    const o = {};
+    for (const [id, e] of hands) o[id] = { cards: this.handOf(id), name: e.name };
+    return o;
   }
 
   // 결과를 보여 준 뒤 다음으로: 재경기면 같은 판돈으로 다시 패를 돌리고, 아니면 새 판
@@ -320,7 +400,7 @@ export class Table {
       if (alive.length === 1) { this.finish(alive); return { ok: true }; }
       this.deal();
       this.say(`── 재경기 ──`);
-      this.beginBetting();
+      this.beginBetting(1);
       return { ok: true };
     }
     if (this.canStart()) return this.startRound();
@@ -349,46 +429,60 @@ export class Table {
   view(me) {
     const r = this.round;
     const shown = this.phase === 'show' ? this.result?.shown ?? {} : {};
+    const mode = this.cfg.mode;
     const seats = this.seats.map((id) => {
       const p = this.players.get(id);
       const inRound = !!r && r.ids.includes(id);
       const has = inRound && r.cards.has(id);
+      const folded = inRound && r.folded.has(id);
       let cards = [];
-      if (has && (id === me || shown[id])) cards = r.cards.get(id);
-      else if (has && !r.folded.has(id)) cards = [null, null];   // 뒷면
+      if (shown[id]) cards = shown[id].cards;
+      else if (has && id === me) cards = r.cards.get(id).slice(0, r.dealt);
+      else if (has && !folded) cards = Array(r.dealt).fill(null);   // 뒷면
       return {
         id, name: p.name, money: p.acct.money, refills: p.acct.refills,
         net: p.acct.money - this.cfg.startMoney * (1 + p.acct.refills),
-        connected: p.connected, inRound,
-        folded: inRound && r.folded.has(id),
-        allin: inRound && !r.folded.has(id) && p.acct.money === 0,
+        connected: p.connected, inRound, folded,
+        allin: inRound && !folded && p.acct.money === 0,
         bet: inRound ? this.contrib(id) : 0,
         last: inRound ? r.last.get(id) ?? '' : '',
+        picking: this.phase === 'pick' && has && !folded && !r.picks.has(id),
         cards,
-        hand: shown[id] ?? (id === me && has ? evaluate(r.cards.get(id)).name : ''),
+        hand: shown[id]?.name ?? (id === me && has ? this.myHandName(id) : ''),
       };
     });
     const mine = this.players.get(me);
+    const myPick = r?.picks.get(me) ?? null;
     return {
-      phase: this.phase, cfg: this.cfg, roundNo: this.roundNo, me,
+      phase: this.phase, cfg: this.cfg, mode, roundNo: this.roundNo, me,
       redeals: r?.redeals ?? 0,
+      street: r?.street ?? 0,
+      sun: r?.first ?? null,
       seats,
       pot: this.pot(),
       turn: this.phase === 'bet' ? r.turn : null,
-      turnLeft: this.phase === 'bet' ? Math.max(0, this.turnDeadline - this.now()) : 0,
+      turnLeft: this.playing ? Math.max(0, this.turnDeadline - this.now()) : 0,
       toCall: this.phase === 'bet' && r.turn === me ? this.maxContrib() - this.contrib(me) : 0,
       options: this.options(me),
+      pickNeeded: this.phase === 'pick' && !!r.cards.has(me) && !r.folded.has(me) && !myPick,
+      myPick: this.phase === 'show' ? null : myPick,
       result: this.phase === 'show' ? this.result : null,
       waiting: !!mine && !!r && this.phase !== 'lobby' && !r.ids.includes(me),
       log: this.log.slice(-30),
     };
   }
-}
 
-function reveal(hands) {
-  const o = {};
-  for (const [id, e] of hands) o[id] = e.name;
-  return o;
+  // 내 패 이름: 보이는 카드가 두 장일 때 (세장은 고른 두 장)
+  myHandName(id) {
+    const r = this.round;
+    const c = r.cards.get(id);
+    if (this.cfg.mode === 3) {
+      const p = r.picks.get(id);
+      if (p) return evaluate([c[p[0]], c[p[1]]]).name;
+      return r.dealt === 2 ? evaluate([c[0], c[1]]).name : '';
+    }
+    return r.dealt === 2 ? evaluate(c).name : '';
+  }
 }
 
 const unit = (ante) => 10 ** Math.max(0, Math.floor(Math.log10(ante)) - 1);

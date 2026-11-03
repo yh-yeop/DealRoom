@@ -119,14 +119,14 @@ function render() {
   if (!st) return;
   $('roomCode').textContent = session.room;
   $('net').textContent = `${GAMES[st.game].name} · ${session.net} · ${st.seats.length}/${st.cfg.maxPlayers}명`;
-  GAMES[st.game].ui.render(st, session.room);
+  GAMES[st.game].ui.render(st, session.room, send);
   renderHost(st);
   renderSide(st);
 }
 
 function renderHost(st) {
   const box = $('hostbox');
-  box.hidden = !st.host || st.phase === 'bet';
+  box.hidden = !st.host || st.phase === 'bet' || st.phase === 'pick';
   if (box.hidden) return;
   $('cfg').hidden = st.phase !== 'lobby';
   const n = st.seats.filter((p) => p.connected).length;
@@ -162,7 +162,7 @@ function renderSide(st) {
 function tick() {
   requestAnimationFrame(tick);
   const st = session?.state;
-  if (!st || st.phase !== 'bet') return;
+  if (!st || (st.phase !== 'bet' && st.phase !== 'pick')) return;
   const frac = Math.max(0, (session.deadline - performance.now()) / (st.cfg.turnSec * 1000));
   for (const el of document.querySelectorAll('.turn .timer')) el.style.width = `${frac * 100}%`;
 }
@@ -230,7 +230,7 @@ $('btnCopy').onclick = async () => {
 };
 $('btnLeave').onclick = () => {
   const st = session?.state;
-  const msg = session?.host ? '방장이 나가면 방이 닫혀요. 나갈까요?' : st?.phase === 'bet' ? '판 중에 나가면 다이 처리돼요. 나갈까요?' : null;
+  const msg = session?.host ? '방장이 나가면 방이 닫혀요. 나갈까요?' : st?.phase === 'bet' || st?.phase === 'pick' ? '판 중에 나가면 다이 처리돼요. 나갈까요?' : null;
   if (msg && !confirm(msg)) return;
   end('');
 };
