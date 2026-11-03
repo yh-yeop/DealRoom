@@ -2,7 +2,7 @@
 // 학교 · 회사망처럼 기기끼리 직접 연결이 막힌 곳에서는 실패한다.
 // 라이브러리는 저장소에 둔 peerjs@1.5.4 묶음 파일 (CDN이 막혀도 되게).
 const PEER_SRC = new URL('../../vendor/peerjs.min.js', import.meta.url).href;
-const peerId = (room) => `seotda-v1-${room}`;
+const peerId = (room) => `dealroom-v1-${room}`;
 let loading = null;
 
 function load() {

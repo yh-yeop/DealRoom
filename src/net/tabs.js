@@ -1,5 +1,5 @@
 // 같은 브라우저의 탭끼리 (BroadcastChannel). 혼자 창 두 개 띄워 시험할 때.
-const channelName = (room) => `seotda-v1:${room}`;
+const channelName = (room) => `dealroom-v1:${room}`;
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 export function listenTabs(room, onConnection) {

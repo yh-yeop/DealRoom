@@ -3,12 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>섯다</title>
-<meta name="description" content="친구끼리 하는 두장섯다. 방장 브라우저가 판을 돌리고, 게임머니로만 겨룬다.">
+<title>딜룸</title>
+<meta name="description" content="친구끼리 하는 카드게임 방. 방장 브라우저가 판을 돌리고, 게임머니로만 겨룬다. 지금은 섯다.">
 <meta name="theme-color" content="#14382b">
-<meta name="robots" content="noindex">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="딜룸">
+<script src="/install.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,19 +21,20 @@
     <div class="card face k-광 big"><b>3</b><i>벚꽃</i><em>光</em></div>
     <div class="card face k-광 big"><b>8</b><i>공산</i><em>光</em></div>
   </div>
-  <h1>섯다</h1>
-  <p class="sub">친구끼리 두장섯다 · <strong>게임머니 전용</strong></p>
+  <h1>딜룸</h1>
+  <p class="sub">친구끼리 카드 한 판 · <strong>게임머니 전용</strong></p>
 
   <label class="field">이름
     <input id="name" maxlength="10" autocomplete="nickname" placeholder="표시할 이름">
   </label>
+  <div class="games" id="games" role="radiogroup" aria-label="게임"></div>
   <button type="button" class="btn primary wide" id="btnHost">방 만들기</button>
   <div class="join">
     <input id="code" maxlength="4" placeholder="방 코드" autocapitalize="characters" autocomplete="off" spellcheck="false">
     <button type="button" class="btn wide" id="btnJoin">참가</button>
   </div>
   <p class="msg" id="msg" role="status"></p>
-  <button type="button" class="link" id="btnRules1">족보 보기</button>
+  <button type="button" class="link" id="btnRules1">섯다 족보 보기</button>
   <p class="fine">현금 · 상품 · 환전이 없는 게임머니입니다. 돈이 떨어지면 다음 판에 자동으로 다시 채워지고, 충전 횟수는 점수에서 빠집니다.</p>
 </main>
 
@@ -87,7 +91,7 @@
 </div>
 
 <dialog id="rules">
-  <h2>족보 (센 순서)</h2>
+  <h2>섯다 족보 (센 순서)</h2>
   <ol class="rank">
     <li><b>38광땡</b> 3광 + 8광</li>
     <li><b>18광땡 · 13광땡</b> 1광 + 8광 / 1광 + 3광</li>

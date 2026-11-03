@@ -79,6 +79,11 @@ export class Table {
     return { ok: true };
   }
 
+  // 결과 화면이 바뀔 때마다 달라지는 값 (방장이 자동 진행 타이머를 다시 걸 때 쓴다)
+  showKey() {
+    return this.phase === 'show' ? `${this.roundNo}:${this.round?.redeals}:${!!this.result?.redeal}` : null;
+  }
+
   canStart() {
     return this.phase !== 'bet' && this.seats.filter((id) => this.players.get(id).connected).length >= 2;
   }

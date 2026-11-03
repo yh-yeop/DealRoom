@@ -1,8 +1,8 @@
 {
-  "name": "seotda",
+  "name": "dealroom",
   "private": true,
   "type": "module",
-  "description": "두장섯다. 빌드 없는 정적 페이지 + 방장 브라우저가 판을 진행 (게임머니 전용)",
+  "description": "딜룸: 친구끼리 하는 카드게임 방. 빌드 없는 정적 페이지 + 방장 브라우저가 판을 진행 (게임머니 전용)",
   "scripts": {
     "test": "node --test"
   }

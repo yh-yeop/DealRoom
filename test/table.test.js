@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Table, MAX_RAISES } from '../src/table.js';
+import { Table, MAX_RAISES } from '../src/games/seotda/table.js';
 
 const c = (m, k = 1) => (m - 1) * 2 + k;
 const G = (m) => c(m, 0);

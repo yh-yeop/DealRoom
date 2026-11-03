@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, showdown, newDeck } from '../src/rules.js';
+import { evaluate, showdown, newDeck } from '../src/games/seotda/rules.js';
 
 // 월 · 종류로 카드 번호 (0 = 광/열끗, 1 = 띠/피)
 const c = (m, k = 1) => (m - 1) * 2 + k;

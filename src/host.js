@@ -1,17 +1,18 @@
-// 방장: 연결마다 사람 하나. 판(Table)을 돌리고, 바뀔 때마다 각자에게 자기 화면만 보낸다.
+// 방장: 연결마다 사람 하나. 고른 게임의 판(Table)을 돌리고, 바뀔 때마다 각자에게 자기 화면만 보낸다.
 // 방장 자신도 같은 페이지 안의 연결(localPair)로 붙는 손님 하나와 똑같이 취급한다 — 다른 점은 방장 명령만.
 //
 // 보내는 말:  { t: 'state', s }  { t: 'err', msg }  { t: 'bye', msg }
 // 받는 말:    { t: 'hello', name }  { t: 'act', k }
 //             방장만: { t: 'start' }  { t: 'next' }  { t: 'config', cfg }  { t: 'auto', on }  { t: 'chat', text }
-import { Table } from './table.js';
+import { GAMES } from './games/index.js';
 
 export const SHOW_MS = 6000;    // 결과를 보여 주는 시간 (자동 진행)
 let nextId = 1;
 
 export class Host {
-  constructor(cfg = {}, { setTimeout: st = setTimeout, clearTimeout: ct = clearTimeout, now = () => Date.now(), table = null } = {}) {
-    this.table = table ?? new Table(cfg, { now });
+  constructor(cfg = {}, { setTimeout: st = setTimeout, clearTimeout: ct = clearTimeout, now = () => Date.now(), game = 'seotda', table = null } = {}) {
+    this.game = game;
+    this.table = table ?? GAMES[game].create(cfg, { now });
     // 브라우저의 setTimeout 은 this 가 window 가 아니면 안 돈다
     this.st = (fn, ms) => st(fn, ms); this.ct = (t) => ct(t);
     this.conns = new Map();     // id → { conn, joined }
@@ -84,7 +85,7 @@ export class Host {
       this.ct(this.turnTimer);
       this.turnSeq = -1;
     }
-    const key = tb.phase === 'show' && this.auto ? `${tb.roundNo}:${tb.round?.redeals}:${tb.result?.redeal}` : null;
+    const key = this.auto ? tb.showKey() : null;
     if (key !== this.showKey) {
       this.ct(this.showTimer);
       this.showKey = key;
@@ -92,7 +93,7 @@ export class Host {
     }
     for (const [id, c] of this.conns) {
       if (!c.joined) continue;
-      c.conn.send({ t: 'state', s: { ...tb.view(id), host: id === this.hostId, auto: this.auto, chat: this.chat.slice(-12) } });
+      c.conn.send({ t: 'state', s: { ...tb.view(id), game: this.game, host: id === this.hostId, auto: this.auto, chat: this.chat.slice(-12) } });
     }
   }
 
