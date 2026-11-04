@@ -105,7 +105,7 @@ h1 { margin: 0; font-size: 40px; letter-spacing: .1em; }
 
 /* ── 게임 화면 ── */
 .game {
-  height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr);
+  height: 100dvh; display: grid; grid-template-rows: auto 1fr auto auto; grid-template-columns: minmax(0, 1fr);
   max-width: 760px; margin: 0 auto; position: relative;
 }
 .bar {
@@ -121,7 +121,7 @@ h1 { margin: 0; font-size: 40px; letter-spacing: .1em; }
 
 /* 둥근 판: 나무 테두리 + 초록 천, 다른 사람 자리는 위쪽 반원에 */
 .table {
-  position: relative; flex: none; height: clamp(340px, 100vw, 430px);
+  position: relative; flex: none; height: clamp(300px, min(100vw, 52dvh), 430px);
   border-radius: 48% / 42%; border: 10px solid var(--wood);
   background: radial-gradient(ellipse at 50% 45%, var(--felt2), var(--felt) 72%);
   box-shadow: inset 0 0 0 2px var(--wood2), inset 0 0 40px rgba(0, 0, 0, .45), 0 8px 22px rgba(0, 0, 0, .5);
@@ -186,6 +186,38 @@ h1 { margin: 0; font-size: 40px; letter-spacing: .1em; }
 .me .nm { font-weight: 700; }
 .me .mn { color: var(--gold); font-variant-numeric: tabular-nums; }
 .me.folded .cards { opacity: .45; }
+
+/* 세장 고르기 창 */
+.panel {
+  background: rgba(59, 42, 26, .95); border: 2px solid #8a6a3c; border-radius: 12px; padding: 10px; flex: none;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+}
+.panel .pt { font-weight: 800; color: var(--gold); }
+.opts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.opt {
+  border: 3px solid transparent; border-radius: 10px; padding: 4px 6px 6px; cursor: pointer; background: rgba(0, 0, 0, .3);
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.opt.on { border-color: var(--gold); background: rgba(0, 0, 0, .55); }
+.opt .no { font-size: 12px; color: var(--dim); }
+.opt .hw { width: 58px; }
+.opt.combo .two { display: flex; gap: 3px; }
+.opt.combo .hw { width: 40px; }
+.opt b { font-size: 13px; color: var(--win); }
+.panel .btn { min-width: 160px; }
+.hwb { position: relative; display: inline-flex; flex-direction: column; align-items: center; }
+.tg { font-size: 11px; color: var(--gold); font-weight: 700; margin-top: 2px; }
+
+/* 족보표 — 늘 보인다 */
+.guide { padding: 6px 12px 0; font-size: 11.5px; line-height: 1.5; }
+.tiers, .specials { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 3px; }
+.specials { margin-top: 3px; gap: 3px 6px; }
+.tiers i { font-style: normal; color: var(--dim); opacity: .6; }
+.tier { padding: 0 5px; border-radius: 6px; background: rgba(0, 0, 0, .3); color: var(--ink); white-space: nowrap; }
+.tier.sp { background: rgba(192, 57, 43, .22); }
+.tier small { margin-left: 3px; color: var(--dim); font-size: 10px; }
+.tier.on { background: var(--gold); color: #2a1d12; font-weight: 800; }
+.tier.on small { color: #4a331d; }
 
 .actions {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 6px;

@@ -2,7 +2,7 @@
 // 방장 자신도 같은 페이지 안의 연결(localPair)로 붙는 손님 하나와 똑같이 취급한다 — 다른 점은 방장 명령만.
 //
 // 보내는 말:  { t: 'state', s }  { t: 'err', msg }  { t: 'bye', msg }
-// 받는 말:    { t: 'hello', name }  { t: 'act', k }  { t: 'pick', idx: [i, j] }
+// 받는 말:    { t: 'hello', name }  { t: 'act', k }  { t: 'open', i }  { t: 'pick', idx: [i, j] }
 //             방장만: { t: 'start' }  { t: 'next' }  { t: 'config', cfg }  { t: 'auto', on }  { t: 'chat', text }
 import { GAMES } from './games/index.js';
 
@@ -54,6 +54,8 @@ export class Host {
       return;
     } else if (m.t === 'act') {
       res = tb.act(id, m.k);
+    } else if (m.t === 'open') {
+      res = tb.open(id, m.i);
     } else if (m.t === 'pick') {
       res = tb.pick(id, m.idx);
     } else if (m.t === 'chat') {

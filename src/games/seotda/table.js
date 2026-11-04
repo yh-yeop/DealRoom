@@ -3,7 +3,7 @@
 //
 // 한 판의 흐름 (mode = 두장 2 · 세장 3)
 //   두장: 1장 → 베팅 → 2장째 → 베팅 → 공개
-//   세장: 2장 → 베팅 → 3장째 → 모두 2장 고르기 → 베팅 → 공개
+//   세장: 2장 → 모두 1장씩 펼치기(남에게 보임) → 베팅 → 3장째 → 모두 두 장 조합 고르기 → 베팅 → 공개
 // 패는 판 시작 때 사람마다 다 뽑아 두고, 보여 주는 장수(dealt)만 늘린다.
 import { newDeck, evaluate, showdown, rank } from './rules.js';
 
@@ -22,7 +22,7 @@ export class Table {
     this.players = new Map();   // id → { id, name, acct, connected }
     this.seats = [];            // 자리 순서 (id)
     this.ledger = new Map();    // 이름 → { money, refills } — 나갔다 다시 들어와도 그대로
-    this.phase = 'lobby';       // lobby | bet | pick | show
+    this.phase = 'lobby';       // lobby | open | bet | pick | show
     this.round = null;
     this.result = null;
     this.lastWinner = null;
@@ -32,7 +32,7 @@ export class Table {
     this.log = [];
   }
 
-  get playing() { return this.phase === 'bet' || this.phase === 'pick'; }
+  get playing() { return this.phase === 'open' || this.phase === 'bet' || this.phase === 'pick'; }
 
   // ── 자리 ─────────────────────────────────────────────
 
@@ -67,6 +67,7 @@ export class Table {
     if (!this.playing) return;
     if (this.alive().length === 1) return this.finish(this.alive());
     if (this.phase === 'bet' && r.turn === id) this.advance();
+    else if (this.phase === 'open' && this.allOpened()) this.beginBetting(1);
     else if (this.phase === 'pick' && this.allPicked()) this.beginBetting(2);
   }
 
@@ -113,7 +114,7 @@ export class Table {
     }
     this.roundNo++;
     this.round = {
-      ids, cards: new Map(), dealt: 0, street: 1, picks: new Map(),
+      ids, cards: new Map(), dealt: 0, street: 1, opens: new Map(), picks: new Map(),
       folded: new Set(), contrib: new Map(), last: new Map(),
       acted: new Set(), raises: new Map(), betMade: false, turn: null, first: null, redeals: 0,
     };
@@ -123,7 +124,7 @@ export class Table {
     this.deal();
     const r = this.round;
     r.first = ids.includes(this.lastWinner) ? this.lastWinner : ids[(this.roundNo - 1) % ids.length];
-    this.beginBetting(1);
+    this.firstStreet();
     return { ok: true };
   }
 
@@ -134,8 +135,36 @@ export class Table {
     const n = this.cfg.mode;
     r.cards.clear();
     r.picks.clear();
+    r.opens.clear();
     r.dealt = n - 1;
     for (const id of r.ids) if (!r.folded.has(id)) r.cards.set(id, Array.from({ length: n }, () => deck.pop()));
+  }
+
+  // 첫 베팅 전: 세장은 두 장 중 한 장을 펼쳐 남에게 보여 준다
+  firstStreet() {
+    if (this.cfg.mode === 2) return this.beginBetting(1);
+    this.phase = 'open';
+    this.turnSeq++;
+    this.turnDeadline = this.now() + this.cfg.turnSec * 1000;
+    this.say('두 장 중 펼칠 패를 고르세요');
+  }
+
+  allOpened() { return this.alive().every((id) => this.round.opens.has(id)); }
+
+  open(id, i) {
+    const r = this.round;
+    if (this.phase !== 'open' || !r.cards.has(id) || r.folded.has(id)) return { err: '지금은 고를 수 없어요' };
+    if (r.opens.has(id)) return { err: '이미 골랐어요' };
+    if (i !== 0 && i !== 1) return { err: '펼칠 패를 골라 주세요' };
+    r.opens.set(id, i);
+    if (this.allOpened()) this.beginBetting(1);
+    return { ok: true };
+  }
+
+  // 시간 초과 때 대신 펼치는 패: 월이 낮은 쪽 (덜 드러나게)
+  autoOpen(id) {
+    const [a, b] = this.round.cards.get(id);
+    return (b >> 1) < (a >> 1) ? 1 : 0;
   }
 
   beginBetting(street) {
@@ -165,7 +194,7 @@ export class Table {
     this.phase = 'pick';
     this.turnSeq++;
     this.turnDeadline = this.now() + this.cfg.turnSec * 1000;
-    this.say('세 번째 카드 — 두 장을 고르세요');
+    this.say('세 번째 카드 — 두 장 조합을 고르세요');
   }
 
   allPicked() { return this.alive().every((id) => this.round.picks.has(id)); }
@@ -254,6 +283,10 @@ export class Table {
   timeout(seq) {
     if (!this.playing || seq !== this.turnSeq) return;
     const r = this.round;
+    if (this.phase === 'open') {
+      for (const id of this.alive()) if (!r.opens.has(id)) r.opens.set(id, this.autoOpen(id));
+      return this.beginBetting(1);
+    }
     if (this.phase === 'pick') {
       for (const id of this.alive()) if (!r.picks.has(id)) r.picks.set(id, this.bestPick(id));
       return this.beginBetting(2);
@@ -400,7 +433,7 @@ export class Table {
       if (alive.length === 1) { this.finish(alive); return { ok: true }; }
       this.deal();
       this.say(`── 재경기 ──`);
-      this.beginBetting(1);
+      this.firstStreet();
       return { ok: true };
     }
     if (this.canStart()) return this.startRound();
@@ -438,7 +471,12 @@ export class Table {
       let cards = [];
       if (shown[id]) cards = shown[id].cards;
       else if (has && id === me) cards = r.cards.get(id).slice(0, r.dealt);
-      else if (has && !folded) cards = Array(r.dealt).fill(null);   // 뒷면
+      else if (has && !folded) {
+        cards = Array(r.dealt).fill(null);   // 뒷면
+        // 세장: 펼친 한 장은 모두가 본다 (다들 고른 뒤부터)
+        const o = r.opens.get(id);
+        if (o != null && this.phase !== 'open') cards[0] = r.cards.get(id)[o];
+      }
       return {
         id, name: p.name, money: p.acct.money, refills: p.acct.refills,
         net: p.acct.money - this.cfg.startMoney * (1 + p.acct.refills),
@@ -446,7 +484,7 @@ export class Table {
         allin: inRound && !folded && p.acct.money === 0,
         bet: inRound ? this.contrib(id) : 0,
         last: inRound ? r.last.get(id) ?? '' : '',
-        picking: this.phase === 'pick' && has && !folded && !r.picks.has(id),
+        picking: (this.phase === 'pick' && has && !folded && !r.picks.has(id)) || (this.phase === 'open' && has && !folded && !r.opens.has(id)),
         cards,
         hand: shown[id]?.name ?? (id === me && has ? this.myHandName(id) : ''),
       };
@@ -464,7 +502,10 @@ export class Table {
       turnLeft: this.playing ? Math.max(0, this.turnDeadline - this.now()) : 0,
       toCall: this.phase === 'bet' && r.turn === me ? this.maxContrib() - this.contrib(me) : 0,
       options: this.options(me),
+      playing: this.playing,
       pickNeeded: this.phase === 'pick' && !!r.cards.has(me) && !r.folded.has(me) && !myPick,
+      openNeeded: this.phase === 'open' && !!r.cards.has(me) && !r.folded.has(me) && !r.opens.has(me),
+      myOpen: this.phase === 'show' ? null : r?.opens.get(me) ?? null,
       myPick: this.phase === 'show' ? null : myPick,
       result: this.phase === 'show' ? this.result : null,
       waiting: !!mine && !!r && this.phase !== 'lobby' && !r.ids.includes(me),

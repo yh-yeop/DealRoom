@@ -1,4 +1,5 @@
-// 섯다 판 그리기 (두장 · 세장 같이): 둥근 판 위 자리 · 판돈 · 진행 문구 · 내 패 · 베팅 버튼 · 세장 고르기.
+// 섯다 판 그리기 (두장 · 세장 같이): 둥근 판 위 자리 · 판돈 · 진행 문구 · 내 패 · 베팅 버튼 · 족보표 ·
+// 세장 고르기 창(펼칠 패 한 장 → 나중에 두 장 조합).
 // 연출: 패 돌리기, 선부터 한 사람씩 공개, 칩이 판돈으로 · 이긴 사람에게 날아가기.
 import { $, esc, fmt, signed, setHtml } from '../../util.js';
 import { evaluate } from './rules.js';
@@ -12,8 +13,8 @@ const ANGLES = { 1: [90], 2: [160, 20], 3: [185, 90, -5], 4: [195, 125, 55, -15]
 let ctx = null;          // { room, send }
 let st = null;           // 마지막으로 받은 화면
 let prev = null;         // 그 전 화면 (칩 연출용)
-let sel = [];            // 세장: 내가 누른 카드 (0~2)
-let selKey = '';
+let choice = null;       // 세장 고르기 창에서 누른 것 (펼칠 패 0~1 · 조합 0~2)
+let choiceKey = '';
 let revealAt = null;     // { key, t0 } — 공개 연출을 시작한 시각
 let timer = 0;
 const seen = new Map();  // 카드 연출 키 → 처음 본 시각
@@ -27,7 +28,7 @@ export function render(state, room, send) {
   ctx = { room, send };
   prev = st;
   st = state;
-  if (selKey !== roundKey(st)) { sel = []; selKey = roundKey(st); }
+  if (choiceKey !== `${roundKey(st)}:${st.phase}`) { choice = null; choiceKey = `${roundKey(st)}:${st.phase}`; }
   if (st.phase === 'show' && st.result?.order?.length) {
     const key = `${roundKey(st)}:${st.result.redeal}`;
     if (revealAt?.key !== key) revealAt = { key, t0: performance.now() };
@@ -78,13 +79,15 @@ function draw() {
     meEl.dataset.id = me.id;
     setHtml(meEl, myHtml(s, me, opened(me.id), allOpen));
   }
+  renderPanel(s, me);
   renderActions(s);
+  renderGuide(s, me);
   if (nextAt < Infinity) timer = setTimeout(draw, Math.max(16, nextAt - performance.now() + 20));
 }
 
 function seatClass(s, p, allOpen) {
   const won = allOpen && s.result && !s.result.redeal && s.result.winners.includes(p.id);
-  const turn = s.turn === p.id || (s.pickNeeded && p.id === s.me);
+  const turn = s.turn === p.id || ((s.pickNeeded || s.openNeeded) && p.id === s.me);
   return [p.folded && 'folded', !p.connected && 'off', turn && 'turn', won && 'win'].filter(Boolean).join(' ');
 }
 
@@ -115,15 +118,12 @@ function tagHtml(s, p) {
 
 function myHtml(s, me, open, allOpen) {
   const rk = roundKey(s);
-  const picking = s.pickNeeded;
   const cards = me.cards.map((c, k) => {
-    const picked = s.myPick ? s.myPick.includes(k) : sel.includes(k);
-    const dim = (s.myPick && !picked) || (picking && sel.length === 2 && !picked);
-    const cls = `big${picking ? ' pickable' : ''}${picked && (picking || s.myPick) ? ' sel' : ''}${dim ? ' dim' : ''}${anim(`${rk}:me:${k}`, 'dl', k * 120)}`;
-    return `<button type="button" class="hwb" data-card="${k}" ${picking ? '' : 'tabindex="-1"'}>${cardSvg(c, cls)}</button>`;
+    const dim = s.myPick && !s.myPick.includes(k);
+    const tag = s.mode === 3 && s.myOpen === k ? '<b class="tg">공개</b>' : '';
+    return `<span class="hwb">${cardSvg(c, `big${dim ? ' dim' : ''}${anim(`${rk}:me:${k}`, 'dl', k * 120)}`)}${tag}</span>`;
   }).join('');
-  let hand = me.hand;
-  if (picking) hand = sel.length === 2 ? evaluate(sel.map((k) => me.cards[k])).name : '두 장을 고르세요';
+  const hand = s.pickNeeded ? '조합을 고르세요' : me.hand;
   const badges = `${me.id === s.sun && s.phase !== 'lobby' ? '<em class="sun">선</em>' : ''}`;
   return `
     <div class="cards${me.cards.length === 3 ? ' three' : ''}">${cards || '<span class="fine">패를 기다리는 중</span>'}</div>
@@ -135,6 +135,44 @@ function myHtml(s, me, open, allOpen) {
     <div class="timer"></div>`;
 }
 
+// 세장 고르기 창: 처음엔 펼칠 패 한 장, 세 번째 카드 뒤엔 두 장 조합
+const COMBOS = [[0, 1], [0, 2], [1, 2]];
+function renderPanel(s, me) {
+  const el = $('panel');
+  const mode = s.openNeeded ? 'open' : s.pickNeeded ? 'pick' : null;
+  const was = !el.hidden;
+  el.hidden = !mode || !me;
+  if (el.hidden) return setHtml(el, '');
+  if (!was) requestAnimationFrame(() => el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+  const opts = mode === 'open'
+    ? me.cards.map((c, k) => `<button type="button" class="opt${choice === k ? ' on' : ''}" data-choice="${k}"><span class="no">(${k + 1})</span>${cardSvg(c)}</button>`)
+    : COMBOS.map((pr, k) => {
+      const two = pr.map((i) => me.cards[i]);
+      return `<button type="button" class="opt combo${choice === k ? ' on' : ''}" data-choice="${k}"><span class="no">(${k + 1})</span><span class="two">${two.map((c) => cardSvg(c)).join('')}</span><b>${esc(evaluate(two).name)}</b></button>`;
+    });
+  setHtml(el, `
+    <div class="pt">${mode === 'open' ? '펼칠 패를 고르세요 <span class="fine">— 다른 사람에게 보여요</span>' : '패를 고르세요'}</div>
+    <div class="opts">${opts.join('')}</div>
+    <button type="button" class="btn primary" data-confirm ${choice == null ? 'disabled' : ''}>${mode === 'open' ? '이 패를 펼치기' : '이 패로 확정'}</button>`);
+  el.querySelector('[data-confirm]').disabled = choice == null;
+}
+
+// 족보표: 늘 보이게, 지금 내 패 자리에 불
+const TIERS = [
+  ['38광땡'], ['18광땡'], ['13광땡'], ['장땡'], ['9~1땡', /^[1-9]땡$/], ['알리'], ['독사'], ['구삥'], ['장삥'], ['장사'], ['세륙'],
+  ['갑오'], ['8~1끗', /^[1-8]끗$/], ['망통'],
+];
+const SPECIALS = [['땡잡이', '1~9땡 잡음'], ['암행어사', '13·18광땡 잡음'], ['구사', '알리 이하면 재경기'], ['멍텅구리구사', '9땡 이하면 재경기']];
+function renderGuide(s, me) {
+  // 세장 조합을 고르는 중이면 누른 조합의 족보에 불
+  const picking = s.pickNeeded && choice != null && me;
+  const mine = picking ? evaluate(COMBOS[choice].map((i) => me.cards[i])).name : me?.hand ?? '';
+  const on = (name, re) => ((re ? re.test(mine) : mine === name) ? ' on' : '');
+  setHtml($('guide'), `
+    <div class="tiers">${TIERS.map(([n, re]) => `<span class="tier${on(n, re)}">${n}</span>`).join('<i>›</i>')}</div>
+    <div class="specials">${SPECIALS.map(([n, d]) => `<span class="tier sp${on(n)}">${n}<small>${d}</small></span>`).join('')}</div>`);
+}
+
 function statusHtml(s, me, allOpen) {
   if (s.phase === 'lobby') {
     const n = s.seats.filter((p) => p.connected).length;
@@ -144,9 +182,10 @@ function statusHtml(s, me, allOpen) {
   }
   const head = `${s.roundNo}판${s.redeals ? ' 재경기' : ''}`;
   const sub = s.waiting ? '<br><span class="fine">다음 판부터 같이 해요</span>' : '';
-  if (s.phase === 'pick') {
+  if (s.phase === 'open' || s.phase === 'pick') {
     const left = s.seats.filter((p) => p.picking).length;
-    return `${head} · ${s.pickNeeded ? '<span class="big">두 장을 고르세요</span>' : `다른 사람이 고르는 중 (${left}명)`}${sub}`;
+    const ask = s.phase === 'open' ? '펼칠 패를 고르세요' : '두 장 조합을 고르세요';
+    return `${head} · ${s.openNeeded || s.pickNeeded ? `<span class="big">${ask}</span>` : `다른 사람이 고르는 중 (${left}명)`}${sub}`;
   }
   if (s.phase === 'bet') {
     const street = s.street === 1 ? (s.mode === 3 ? '두 장 베팅' : '첫 장 베팅') : '마지막 베팅';
@@ -165,11 +204,6 @@ function statusHtml(s, me, allOpen) {
 
 function renderActions(s) {
   const el = $('actions');
-  if (s.pickNeeded) {
-    setHtml(el, `<button type="button" class="a-pick" data-pick ${sel.length === 2 ? '' : 'disabled'}>이 두 장으로<small>${sel.length}/2</small></button>`);
-    el.querySelector('[data-pick]').disabled = sel.length !== 2;
-    return;
-  }
   if (s.options.length) {
     setHtml(el, s.options.map((o) => {
       const amt = o.pay ? `${o.allin && o.k !== 'allin' ? '올인 ' : ''}${fmt(o.pay)}` : '';
@@ -178,26 +212,22 @@ function renderActions(s) {
     for (const b of el.querySelectorAll('button')) b.disabled = false;
     return;
   }
-  const wait = s.phase === 'bet' ? '기다리는 중…' : s.phase === 'pick' ? '다른 사람이 고르는 중…' : '';
+  const wait = s.openNeeded || s.pickNeeded ? '위 창에서 골라 주세요' : s.phase === 'bet' ? '기다리는 중…' : s.phase === 'open' || s.phase === 'pick' ? '다른 사람이 고르는 중…' : '';
   setHtml(el, `<p class="wait">${wait}</p>`);
 }
 
-// ── 세장: 카드 고르기 ─────────────────────────────────
+// ── 세장: 고르기 창 입력 ───────────────────────────────
 
 function bind() {
   bound = true;
-  $('me').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-card]');
-    if (!b || !st?.pickNeeded) return;
-    const k = +b.dataset.card;
-    sel = sel.includes(k) ? sel.filter((x) => x !== k) : sel.length < 2 ? [...sel, k] : [sel[1], k];
-    draw();
-  });
-  $('actions').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-pick]');
-    if (!b || sel.length !== 2) return;
-    b.disabled = true;
-    ctx.send({ t: 'pick', idx: sel });
+  $('panel').addEventListener('click', (e) => {
+    const opt = e.target.closest('[data-choice]');
+    if (opt) { choice = +opt.dataset.choice; draw(); return; }
+    const ok = e.target.closest('[data-confirm]');
+    if (!ok || choice == null) return;
+    ok.disabled = true;
+    if (st.openNeeded) ctx.send({ t: 'open', i: choice });
+    else if (st.pickNeeded) ctx.send({ t: 'pick', idx: COMBOS[choice] });
   });
 }
 

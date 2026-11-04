@@ -237,12 +237,27 @@ test('입장 제한', () => {
 
 // ── 세장섯다 ──
 
-test('세장: 두 장 받고 베팅, 세 장째 받고 고르기, 베팅, 고른 두 장으로 승부', () => {
+// 세장: 모두 펼칠 패를 고른다
+const openAll = (tb, pick = {}) => { for (const id of tb.alive()) assert.ok(tb.open(id, pick[id] ?? 0).ok); };
+
+test('세장: 두 장 받고 한 장 펼치기, 베팅, 세 장째 받고 조합 고르기, 베팅, 고른 두 장으로 승부', () => {
   const tb = table(2, [[[c(2), G(10), c(10)], [G(3), c(1), G(8)]]], { mode: 3 });
   tb.startRound();
+  assert.equal(tb.phase, 'open');
   assert.deepEqual(tb.view('p0').seats[0].cards, [c(2), G(10)]);
   assert.equal(tb.view('p0').seats[0].hand, '2끗');
-  assert.deepEqual(tb.view('p0').seats[1].cards, [null, null]);
+  assert.equal(tb.view('p0').openNeeded, true);
+  assert.deepEqual(tb.view('p0').options, []);
+  assert.ok(tb.open('p0', 2).err);
+  assert.ok(tb.open('p0', 1).ok);
+  assert.ok(tb.open('p0', 0).err);              // 한 번만
+  assert.equal(tb.view('p0').myOpen, 1);
+  assert.equal(tb.view('p0').seats[1].picking, true);
+  assert.deepEqual(tb.view('p1').seats[0].cards, [null, null]);   // 다 고르기 전엔 안 보인다
+  assert.ok(tb.open('p1', 0).ok);
+  assert.equal(tb.phase, 'bet');
+  assert.deepEqual(tb.view('p1').seats[0].cards, [G(10), null]);  // 펼친 패는 남에게 보인다
+  assert.deepEqual(tb.view('p0').seats[1].cards, [G(3), null]);
   checkAround(tb);
   assert.equal(tb.phase, 'pick');
   assert.deepEqual(tb.view('p0').seats[0].cards, [c(2), G(10), c(10)]);
@@ -269,6 +284,9 @@ test('세장: 두 장 받고 베팅, 세 장째 받고 고르기, 베팅, 고른
 test('세장: 시간이 지나면 가장 센 두 장을 대신 고른다', () => {
   const tb = table(2, [[[c(5), G(1), c(1)], [c(2), c(3), c(4)]]], { mode: 3 });
   tb.startRound();
+  tb.timeout(tb.turnSeq);                         // 펼치기도 시간이 지나면 대신 (월이 낮은 쪽)
+  assert.equal(tb.round.opens.get('p0'), 1);
+  assert.equal(tb.round.opens.get('p1'), 0);
   checkAround(tb);
   assert.ok(tb.pick('p1', [0, 1]).ok);
   tb.timeout(tb.turnSeq);
@@ -276,13 +294,16 @@ test('세장: 시간이 지나면 가장 센 두 장을 대신 고른다', () =>
   assert.equal(tb.phase, 'bet');
 });
 
-test('세장: 고르는 중에 나가면 남은 사람끼리 진행', () => {
+test('세장: 펼치는 중에 나가면 남은 사람끼리 진행', () => {
   const tb = table(3, [], { mode: 3 });
   tb.startRound();
+  tb.open('p0', 0);
+  tb.open('p1', 0);
+  tb.leave('p2');                                 // 펼치는 중에 나감
+  assert.equal(tb.phase, 'bet');
   checkAround(tb);
   tb.pick('p0', [0, 1]);
   tb.pick('p1', [0, 1]);
-  tb.leave('p2');
   assert.equal(tb.phase, 'bet');
   assert.equal(tb.round.street, 2);
 });
@@ -297,6 +318,10 @@ test('무작위로 많이 돌려도 돈이 새지 않는다 (두장 · 세장)',
       if (!tb.playing) assert.ok(tb.next().ok || tb.startRound().ok);
       let guard = 0;
       while (tb.playing) {
+        if (tb.phase === 'open') {
+          for (const id of tb.alive()) if (!tb.round.opens.has(id)) tb.open(id, Math.floor(rand() * 2));
+          continue;
+        }
         if (tb.phase === 'pick') {
           for (const id of tb.alive()) if (!tb.round.picks.has(id)) tb.pick(id, [[0, 1], [0, 2], [1, 2]][Math.floor(rand() * 3)]);
           continue;

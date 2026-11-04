@@ -113,6 +113,12 @@ test('세장섯다: 고르기를 안 하면 시간이 지나 대신 고른다', 
   await flush();
   assert.equal(st.mode, 3);
   assert.equal(st.seats[0].cards.length, 2);
+  assert.equal(st.phase, 'open');
+  b.send({ t: 'open', i: 1 });
+  await flush();
+  assert.equal(st.myOpen, 1);
+  clock.advance(10000); await flush();     // 손님은 시간이 지나 대신 펼침
+  assert.equal(st.phase, 'bet');
   clock.advance(10000); await flush();
   clock.advance(10000); await flush();
   assert.equal(st.phase, 'pick');
